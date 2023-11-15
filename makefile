@@ -9,24 +9,39 @@ CFLAGS = -Wall -g
 LDFLAGS = -lm -lpthread
 
 # files .o
-OBJS = chat.o reader.o writer.o modules.o 
+process_a_OBJS = process_a.o modules.o 
+process_b_OBJS = process_b.o modules.o 
 
 # The executable program
-EXEC = chat
+process_a_EXEC = process_a
+process_b_EXEC = process_b
 
 # Args
-ARGS = data.txt 10 2 250
+process_a_ARGS = data.txt 10 2 250
+process_b_ARGS =
 
+$(process_a_EXEC): $(process_a_OBJS)
+	$(CC) $(process_a_OBJS) -o $(process_a_EXEC) $(LDFLAGS)
+	rm $(RMFLAGS) $(process_a_OBJS)
 
-$(EXEC): $(OBJS)
-	$(CC) $(OBJS) -o $(EXEC) $(LDFLAGS)
-	rm $(RMFLAGS) $(OBJS)
+$(process_b_EXEC): $(process_b_OBJS)
+	$(CC) $(process_b_OBJS) -o $(process_b_EXEC) $(LDFLAGS)
+	rm $(RMFLAGS) $(process_b_OBJS)
 
-clean:
-	rm -f $(OBJS) $(EXEC)
+clean process_a:
+	rm -f $(process_a_OBJS) $(process_a_EXEC)
 
-run: $(EXEC)
-	./$(EXEC) $(ARGS)
+clean process_b:
+	rm -f $(process_b_OBJS) $(process_b_EXEC)
 
-valgrind: $(EXEC)
-	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./$(EXEC) $(ARGS)
+run process_a: $(process_a_EXEC)
+	./$(process_a_EXEC) $(process_a_ARGS)
+
+run process_b: $(process_b_EXEC)
+	./$(process_b_EXEC) $(process_b_ARGS)
+
+valgrind process_a: $(process_a_EXEC)
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./$(process_a_EXEC) $(process_a_ARGS)
+
+valgrind process_b: $(process_b_EXEC)
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./$(process_b_EXEC) $(process_b_ARGS)
