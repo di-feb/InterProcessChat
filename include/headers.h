@@ -1,23 +1,7 @@
 #pragma once
 
-#include <semaphore.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <dirent.h>
-#include <signal.h>
-#include <semaphore.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
-#include <sys/wait.h> 
-#include "headers.h"
-#include <time.h>
-#include <wait.h>
-#include <pthread.h>
+#include <semaphore.h> // For sem_t
+#include "ADTVector.h" // For Vector
 
 #define SHM_SIZE 1024
 #define SHM_PERM 0666
@@ -30,16 +14,26 @@ typedef struct shared_memory* SharedMemory;
 typedef sem_t Semaphore;
 
 struct shared_memory{
-    char message[MAX_MESSAGES][MAX_MESSAGE_SIZE];
+    Vector message;
     Semaphore writer_lock;
     Semaphore reader_lock;
 
 };
 
+// Mallocs new memory for a string and
+// copies the contents of the given string
+char *create_string(char *str);
+
+// Creates the shared memory segment
+SharedMemory create_segment();
+
+// Deallocates the shared memory segment
+void destroy_segment(SharedMemory shared_memory);
+
 // Initializes the shared memory and the semaphores
 int initialize_structures(SharedMemory shared_memory);
 
-// Deallocates the shared memory and the semaphores
+// Destroy the shared memory segment and the semaphores
 void destroy_structures();
 
 // Stores the shared memory id
@@ -47,6 +41,12 @@ void store_shm_id(int shm_id);
 
 // Retrieves the shared memory id
 void retrieve_shm_id(int* shm_id);
+
+// Splits the message into parts of 15 characters
+void segment_message(SharedMemory shared_memory, char* message);
+
+// Splits the file into parts of 15 characters
+void segment_file(SharedMemory shared_memory, char* filename);
 
 // Sends a new message
 void* send_message(void*);

@@ -1,4 +1,4 @@
-#include "headers.h"
+#include "../include/headers.h"
 
 // The process A is responsible for initializing the shared memory and the semaphores
 // and deallocating them when the program finishes. 
