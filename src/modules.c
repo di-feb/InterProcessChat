@@ -6,7 +6,6 @@
 #include <errno.h>
 #include <dirent.h>
 #include <signal.h>
-#include <semaphore.h>
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
@@ -29,28 +28,27 @@ char *create_string(char *str)
 SharedMemory create_segment()
 {
     SharedMemory shared_memory = malloc(sizeof(*shared_memory));
-    shared_memory->message = vector_create(0, free);
+    shared_memory->segments_counter = 0;
     return shared_memory;
 }
 
 void destroy_segment(SharedMemory shared_memory)
 {
-    vector_destroy(shared_memory->message);
     free(shared_memory);
 }
 
 // Initializes the shared memory and the semaphores
-int initialize_structures(SharedMemory shared_memory)
+int initialize_structures(SharedMemory *shared_memory, key_t key)
 {
     // Make shared memory segment.
-    int shm_id = shmget(IPC_PRIVATE, 5 * sizeof(*shared_memory), IPC_CREAT | SHM_PERM);
+    int shm_id = shmget(key, sizeof(**shared_memory) + MAX_SEGMENTS * MAX_MESSAGE_SEGMENT_SIZE, IPC_CREAT | SHM_PERM);
     if (shm_id == -1)
         perror("Creation of the segment.");
     else
         printf("Allocated shared memory with id: %d.\n", shm_id);
 
     // Attach the segment.
-    if ((shared_memory = (SharedMemory)shmat(shm_id, NULL, 0)) == (void *)-1)
+    if ((*shared_memory = (SharedMemory)shmat(shm_id, NULL, 0)) == (void *)-1)
     {
         perror("Attachment.");
         exit(1);
@@ -59,19 +57,26 @@ int initialize_structures(SharedMemory shared_memory)
         printf("Attached segment with id: %d.\n", shm_id);
 
     // Initialize the semaphores
-    if (sem_init(&shared_memory->writer_lock, SEM_PROCESS_SHARED, 1) != 0)
+    if (sem_init(&(*shared_memory)->message_full_lock, SEM_PROCESS_SHARED, 0) != 0)
     {
-        perror("Couldn't initialize semaphore named writer_lock.");
+        perror("Couldn't initialize semaphore named message_full_lock.");
         exit(1);
     }
-    printf("The semaphore named:writer_lock has been initialized.\n");
+    printf("The semaphore named:message_full_lock has been initialized.\n");
 
-    if (sem_init(&shared_memory->reader_lock, SEM_PROCESS_SHARED, 0) != 0)
+    if (sem_init(&(*shared_memory)->message_empty_lock, SEM_PROCESS_SHARED, 1) != 0)
     {
-        perror("Couldn't initialize semaphore named reader_lock.");
+        perror("Couldn't initialize semaphore named message_empty_lock.");
         exit(1);
     }
-    printf("The semaphore named:reader_lock has been initialized.\n");
+    printf("The semaphore named:message_empty_lock has been initialized.\n");
+
+    if (sem_init(&(*shared_memory)->mutex, SEM_PROCESS_SHARED, 1) != 0)
+    {
+        perror("Couldn't initialize semaphore named mutex.");
+        exit(1);
+    }
+    printf("The semaphore named:mutex has been initialized.\n");
 
     return shm_id;
 }
@@ -80,20 +85,28 @@ int initialize_structures(SharedMemory shared_memory)
 void destroy_structures(SharedMemory shared_memory, int shm_id)
 {
     // Deallocate the semaphores
-    if (sem_destroy(&shared_memory->writer_lock) != 0)
+    if (sem_destroy(&shared_memory->mutex) != 0)
     {
-        perror("Couldn't destroy semaphore named writer_lock.");
+        perror("Couldn't destroy semaphore named mutex.");
         exit(1);
     }
-    printf("The semaphore named:writer_lock has been destroyed.\n");
+    printf("The semaphore named:mutex has been destroyed.\n");
 
-    if (sem_destroy(&shared_memory->reader_lock) != 0)
+    if (sem_destroy(&shared_memory->message_full_lock) != 0)
     {
-        perror("Couldn't destroy semaphore named reader_lock.");
+        perror("Couldn't destroy semaphore named message_full_lock.");
         exit(1);
     }
-    printf("The semaphore named:reader_lock has been destroyed.\n");
+    printf("The semaphore named:message_full_lock has been destroyed.\n");
 
+    if (sem_destroy(&shared_memory->message_empty_lock) != 0)
+    {
+        perror("Couldn't destroy semaphore named message_empty_lock.");
+        exit(1);
+    }
+    printf("The semaphore named:message_empty_lock has been destroyed.\n");
+
+    // Detach the segment.
     int err = shmdt((void *)shared_memory);
     if (err == -1)
         perror("Detachment.");
@@ -111,7 +124,7 @@ void destroy_structures(SharedMemory shared_memory, int shm_id)
 
 // Stores the shared memory id so process B can retrieve it
 // into a file
-void store_shm_id(int shm_id)
+void store_shm_id(int shm_id_1, int shm_id_2)
 {
     // Write shm_id to a file
     FILE *fp = fopen("shm_id.txt", "w");
@@ -120,12 +133,14 @@ void store_shm_id(int shm_id)
         perror("Error opening file.");
         exit(1);
     }
-    fprintf(fp, "%d", shm_id);
+    fprintf(fp, "%d\n", shm_id_1);
+    fprintf(fp, "%d", shm_id_2);
+    printf("Stored shared memory ids: %d, %d with success.\n", shm_id_1, shm_id_2);
     fclose(fp);
 }
 
 // Retrieves the shared memory id from a file
-void retrieve_shm_id(int *shm_id)
+void retrieve_shm_id(int *shm_id_1, int *shm_id_2)
 {
     // Read shm_id from a file
     FILE *fp = fopen("shm_id.txt", "r");
@@ -134,72 +149,186 @@ void retrieve_shm_id(int *shm_id)
         perror("Error opening file.");
         exit(1);
     }
-    fscanf(fp, "%d", shm_id);
+    fscanf(fp, "%d", shm_id_1);
+    fscanf(fp, "%d", shm_id_2);
+
     fclose(fp);
 }
 
+// Copies n characters from src to dest
+// and puts a null terminator at the end
 char *copy_n_chars(char *dest, const char *src, size_t n)
 {
     size_t i;
-    for (i = 0; i < n && src[i]; i++) {
+    for (i = 0; i < n && src[i]; i++)
+    {
         dest[i] = src[i];
     }
     dest[i] = '\0';
     return dest;
 }
 
+// Copies n characters from file to dest
+// and puts a null terminator at the end
+char *copy_n_chars_from_file(char *dest, FILE *file, size_t n)
+{
+    size_t i;
+    int c;
+    for (i = 0; i < n && (c = fgetc(file)) != EOF; i++)
+    {
+        dest[i] = c;
+    }
+    dest[i] = '\0';
+    return dest;
+}
+
 // Splits the message into segments of 15 characters
-void segment_message(SharedMemory shared_memory, char *message)
+void write_message(SharedMemory shared_memory, char *message)
 {
     while (*message)
     {
-        char *message_segment = malloc(MAX_MESSAGE_SIZE + 1);
-        copy_n_chars(message_segment, message, MAX_MESSAGE_SIZE);
+        char *message_segment = malloc(MAX_MESSAGE_SEGMENT_SIZE + 1);
+        copy_n_chars(message_segment, message, MAX_MESSAGE_SEGMENT_SIZE);
+
         // If we read all the message
         if (*message_segment == '\0')
         {
             free(message_segment);
             break;
         }
-        vector_insert_last(shared_memory->message, create_string(message_segment));
+        // Copy the message segment to the shared memory
+        copy_n_chars(shared_memory->message[shared_memory->segments_counter], message_segment, strlen(message_segment));
+        shared_memory->segments_counter++;
+
+        // Check if the message is #BYE#
+        if (strcmp(message_segment, "#BYE#") == 0)
+        {
+            free(message_segment);
+            pthread_exit(NULL);
+        }
+
         message += strlen(message_segment);
         free(message_segment);
     }
 }
 
 // Splits the file into segments of 15 characters
-void segment_file(SharedMemory shared_memory, char* filename)
+void segment_file(SharedMemory shared_memory, char *filename)
 {
-    FILE* file = fopen(filename, "r");
-    if (file == NULL) {
+    FILE *file = fopen(filename, "r");
+    if (file == NULL)
+    {
         perror("Error opening file.");
         return;
     }
 
     while (!feof(file))
     {
-        char *message_segment = malloc(MAX_MESSAGE_SIZE);
-        int chars_read = fscanf(file, "%15s", message_segment);
+        char *message_segment = malloc(MAX_MESSAGE_SEGMENT_SIZE + 1);
+        copy_n_chars_from_file(message_segment, file, MAX_MESSAGE_SEGMENT_SIZE);
         // If we read all the file
-        if (chars_read <= 0) {
+        if (*message_segment == '\0')
+        {
             free(message_segment);
             break;
         }
-        vector_insert_last(shared_memory->message, create_string(message_segment));
+
+        // Copy the message segment to the shared memory
+        copy_n_chars(shared_memory->message[shared_memory->segments_counter], message_segment, strlen(message_segment));
+        shared_memory->segments_counter++;
+
         free(message_segment);
     }
 
     fclose(file);
 }
 
-// The thread code that is responsible for receiving messages
-void *receive_message(void *data)
+// It handles the message.
+// Check every segment of it and if it is #BYE# then
+// it stops printing the message and returns 1.
+// Otherwise it returns 0.
+int read_message(SharedMemory shared_memory)
 {
-    return NULL;
+    int res = 0;
+    for (int i = 0; i < shared_memory->segments_counter; i++)
+    {
+        if (strcmp(shared_memory->message[i], "#BYE#") == 0)
+        {
+            printf("%s\n", shared_memory->message[i]);
+            res = 1;
+        }
+    }
+
+    return res;
 }
 
-// The thread code that is responsible for sending messages
+void empty_message(SharedMemory shared_memory)
+{
+    while (shared_memory->segments_counter > 0)
+    {
+        shared_memory->message[shared_memory->segments_counter - 1][0] = '\0';
+        shared_memory->segments_counter--;
+    }
+}
+
+// The thread code that is responsible for receiving message
+void *receive_message(void *data)
+{
+    SharedMemory shared_memory = (SharedMemory)data;
+
+    while (1)
+    {
+
+        // The reader waits the writer to finish
+        sem_wait(&shared_memory->message_full_lock);
+        if (shared_memory->message == NULL)
+        {
+            perror("shared_memory->message is NULL\n");
+            exit(1);
+        }
+        int res = read_message(shared_memory);
+        if (shared_memory->message == NULL)
+        {
+            perror("shared_memory->message is NULL\n");
+            exit(1);
+        }
+        // if the res is equal to 1 then the message was #BYE#
+        // so we need to stop the chatting and exit the thread
+        if (res)
+            pthread_exit(NULL);
+
+        empty_message(shared_memory);
+
+        // We set the message_empty_lock to 0 so the writer can write
+        sem_post(&shared_memory->message_empty_lock);
+    }
+}
+
+// The thread code that is responsible for sending message
 void *send_message(void *data)
 {
-    return NULL;
+    SharedMemory shared_memory = (SharedMemory)data;
+
+    if (shared_memory == NULL)
+    {
+        perror("shared_memory is NULL\n");
+        exit(1);
+    }
+
+    while (1)
+    {
+        // The writer waits the reader to finish
+        sem_wait(&shared_memory->message_empty_lock);
+
+        char message[MAX_MESSAGE_SIZE + 1];
+
+        // Read the message from the user
+        scanf("%s", message);
+
+        // Now the writer can write
+        write_message(shared_memory, message);
+
+        // We set the message_full_lock to 1 so the reader can read
+        sem_post(&shared_memory->message_full_lock);
+    }
 }
