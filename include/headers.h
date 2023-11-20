@@ -11,6 +11,8 @@
 #define MAX_SEGMENTS 1000
 #define MAX_MESSAGE_SEGMENT_SIZE 15
 #define MAX_MESSAGE_SIZE 4096
+#define PROCESS_A_KEY 200
+#define PROCESS_B_KEY 300
 
 typedef struct shared_memory *SharedMemory;
 typedef sem_t Semaphore;
@@ -55,7 +57,7 @@ char *copy_n_chars(char *dest, const char *src, size_t n);
 char *copy_n_chars_from_file(char *dest, FILE *file, size_t n);
 
 // Splits the message into parts of 15 characters
-void write_message(SharedMemory shared_memory, char *message);
+void write_message(SharedMemory shared_memory);
 
 // Splits the file into parts of 15 characters
 void segment_file(SharedMemory shared_memory, char *filename);
@@ -68,6 +70,10 @@ int read_message(SharedMemory shared_memory);
 
 // Empty all the segments of the message
 void empty_message(SharedMemory shared_memory);
+
+// Read at most `n` characters (newline included) into `str`.
+// If present, the newline is removed (replaced by the null terminator).
+void s_gets(char *str, int n);
 
 // Sends a new message
 void *send_message(void *data);

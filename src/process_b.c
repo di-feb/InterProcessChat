@@ -20,6 +20,7 @@ int main(int argc, char** argv)
     } // Handle the error case.
     else
         printf("Attached segment with id: %d.\n", shm_id_1);
+
     SharedMemory shared_memory_b = (SharedMemory)shmat(shm_id_2, NULL, 0);
     if(shared_memory_b == (void *)-1)
     {
@@ -29,17 +30,8 @@ int main(int argc, char** argv)
     else
         printf("Attached segment with id: %d.\n", shm_id_2);
 
-    if(shared_memory_a->message == NULL)
-    {
-        perror("Error creating the vector.");
-        exit(1);
-    }
 
-    if(shared_memory_b->message == NULL)
-    {
-        perror("Error creating the vector.");
-        exit(1);
-    }
+    printf("\n\n\033[1;32m-----> CHAT APPLICATION <-----\033[0m\n\n");
 
     // Create the sender and receiver threads
     pthread_t sender_thread, receiver_thread;

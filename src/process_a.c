@@ -10,11 +10,13 @@ int main(int argc, char** argv)
     SharedMemory shared_memory_b = NULL;
      
     // Initialize the shared memory and the semaphores
-    int shm_id_a = initialize_structures(&shared_memory_a, 111);
-    int shm_id_b = initialize_structures(&shared_memory_b, 222);
+    int shm_id_a = initialize_structures(&shared_memory_a, PROCESS_A_KEY);
+    int shm_id_b = initialize_structures(&shared_memory_b, PROCESS_B_KEY);
 
     // Store the shared memory id so process B can retrieve it
     store_shm_id(shm_id_a, shm_id_b);
+
+    printf("\n\n\033[1;32m-----> CHAT APPLICATION <-----\033[0m\n\n");
 
     // Create the sender and receiver threads
     pthread_t sender_thread, receiver_thread;
