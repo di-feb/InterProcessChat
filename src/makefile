@@ -29,10 +29,13 @@ $(process_b_EXEC): $(process_b_OBJS)
 	rm $(RMFLAGS) $(process_b_OBJS)
 
 clean_process_a:
-	rm -f $(process_a_OBJS) $(process_a_EXEC)
+	rm $(process_a_OBJS) $(process_a_EXEC)
 
 clean_process_b:
-	rm -f $(process_b_OBJS) $(process_b_EXEC)
+	rm $(process_b_OBJS) $(process_b_EXEC)
+
+clean: 
+	rm -f *.o *.d $(process_a_EXEC) $(process_b_EXEC)
 
 run_process_a: $(process_a_EXEC)
 	./$(process_a_EXEC) $(process_a_ARGS)
