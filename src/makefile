@@ -9,8 +9,8 @@ CFLAGS = -Wall -g
 LDFLAGS = -lm -lpthread
 
 # files .o
-process_a_OBJS = process_a.o modules.o ADTVector.o
-process_b_OBJS = process_b.o modules.o ADTVector.o
+process_a_OBJS = process_a.o modules.o
+process_b_OBJS = process_b.o modules.o
 
 # The executable program
 process_a_EXEC = process_a

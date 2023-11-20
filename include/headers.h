@@ -3,7 +3,6 @@
 #include <stdio.h>     // For FILE
 #include <stdlib.h>    // For malloc
 #include <semaphore.h> // For sem_t
-#include "ADTVector.h" // For Vector
 
 #define SHM_SIZE 1024
 #define SHM_PERM 0666

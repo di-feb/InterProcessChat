@@ -13,7 +13,6 @@
 #include <time.h>
 #include <wait.h>
 #include <pthread.h>
-#include "../include/ADTVector.h"
 #include "../include/headers.h"
 
 // Mallocs new memory for a string and
