@@ -129,7 +129,7 @@ void destroy_structures(SharedMemory shared_memory, int shm_id)
 void store_shm_id(int shm_id_1, int shm_id_2)
 {
     // Write shm_id to a file
-    FILE *fp = fopen("shm_id.txt", "w");
+    FILE *fp = fopen("../dataset/shm_id.txt", "w");
     if (fp == NULL)
     {
         perror("Error opening file.");
@@ -145,7 +145,7 @@ void store_shm_id(int shm_id_1, int shm_id_2)
 void retrieve_shm_id(int *shm_id_1, int *shm_id_2)
 {
     // Read shm_id from a file
-    FILE *fp = fopen("shm_id.txt", "r");
+    FILE *fp = fopen("../dataset/shm_id.txt", "r");
     if (fp == NULL)
     {
         perror("Error opening file.");
