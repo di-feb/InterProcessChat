@@ -49,6 +49,16 @@ int main(int argc, char** argv)
         perror("Error joining receiver thread.");
         exit(1);
     }
+
+    printf("\n\n\033[1;33m-----> PROCESS_B STATISTICS <-----\033[0m\n\n");
+
+    printf("Total messages sent: %d\n", shared_memory_b->total_messages_sent);
+    printf("Total messages received: %d\n", shared_memory_a->total_messages_received);
+    printf("Total segments sent: %d\n", shared_memory_b->total_segments);
+    printf("Average segments per message: %f\n", (double)shared_memory_b->total_segments / shared_memory_b->total_messages_sent);
+    printf("Average wait time: %f\n", shared_memory_b->total_wait_time / shared_memory_b->total_messages_sent);
+
+    printf("\n\n\033[1;33m-----> END OF PROCESS_B STATISTICS <-----\033[0m\n\n");
     
     return 0;
 }

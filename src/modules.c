@@ -1,18 +1,16 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <dirent.h>
-#include <signal.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
-#include <sys/wait.h>
-#include <time.h>
-#include <wait.h>
-#include <pthread.h>
+#include <stdio.h>    // For FILE
+#include <stdlib.h>   // For malloc
+#include <string.h>   // For strlen, strcpy, strchr
+#include <fcntl.h>    // For O_CREAT, O_RDWR
+#include <errno.h>  
+#include <dirent.h>   // For opendir, readdir, closedir
+#include <sys/types.h>// For open, close 
+#include <sys/ipc.h>  // For shmget, shmat, shmdt, shmctl
+#include <sys/shm.h>  // For shmget, shmat, shmdt, shmctl
+#include <sys/wait.h> // For wait
+#include <time.h>     // For clock_t
+#include <wait.h>     // For wait
+#include <pthread.h>  // For pthread_create, pthread_join
 #include "../include/headers.h"
 
 // Mallocs new memory for a string and
@@ -77,7 +75,14 @@ int initialize_structures(SharedMemory *shared_memory, key_t key)
     }
     printf("The semaphore named:mutex has been initialized.\n");
 
+    // Initialize variables
     (*shared_memory)->segments_counter = 0;
+    (*shared_memory)->total_messages_sent = 0;
+    (*shared_memory)->total_messages_received = 0;
+    (*shared_memory)->total_segments = 0;
+    (*shared_memory)->total_wait_time = 0;
+    (*shared_memory)->write_end_time = 0;
+    (*shared_memory)->read_start_time = 0;
 
     return shm_id;
 }
@@ -201,10 +206,16 @@ void write_message(SharedMemory shared_memory, char *message)
         copy_n_chars(shared_memory->message[shared_memory->segments_counter], message_segment, strlen(message_segment));
         shared_memory->segments_counter++;
 
-        // Check if the message is #BYE#
-        if (strcmp(message_segment, "#BYE#") == 0)
+        // Check if the message is #BYE. 
+        // If it is then we need to stop chatting
+        if (strcmp(message_segment, "#BYE#") == 0 && shared_memory->segments_counter == 1)
         {
+            // Free the memory of message_segment
             free(message_segment);
+
+            // Update the total_segments, total_messages_sent
+            shared_memory->total_segments += shared_memory->segments_counter;
+            shared_memory->total_messages_sent++;
 
             // We set the message_full_lock to 1 so the reader can read
             sem_post(&shared_memory->message_full_lock);
@@ -214,6 +225,11 @@ void write_message(SharedMemory shared_memory, char *message)
         message += strlen(message_segment);
         free(message_segment);
     }
+
+    // Update the total_segments, total_messages_sent, write_end_time
+    shared_memory->total_segments += shared_memory->segments_counter;
+    shared_memory->total_messages_sent++;
+    shared_memory->write_end_time = clock();
 }
 
 // Splits the file into segments of 15 characters
@@ -255,6 +271,9 @@ int read_message(SharedMemory shared_memory)
 {
     int res = 0;
     char full_message[MAX_MESSAGE_SIZE] = "";
+
+    shared_memory->read_start_time = clock();
+    shared_memory->total_wait_time += (double)(shared_memory->read_start_time - shared_memory->write_end_time) / CLOCKS_PER_SEC;
     for (int i = 0; i < shared_memory->segments_counter; i++)
         copy_n_chars(full_message + strlen(full_message),
                      shared_memory->message[i], strlen(shared_memory->message[i]));
@@ -265,6 +284,7 @@ int read_message(SharedMemory shared_memory)
     printf("\033[1;36mFriend: \033[0m%s\n", full_message);
     fflush(stdout); // Manually flush the buffer because we don't have a newline character
 
+    shared_memory->total_messages_received++;
     return res;
 }
 
@@ -307,7 +327,7 @@ void *receive_message(void *data)
 void *send_message(void *data)
 {
     SharedMemory shared_memory = (SharedMemory)data;
-
+    
     while (1)
     {
         // The writer waits the reader to finish
@@ -327,6 +347,7 @@ void *send_message(void *data)
         // Now the writer can write
         write_message(shared_memory, message);
 
+        
         // We set the message_full_lock to 1 so the reader can read
         sem_post(&shared_memory->message_full_lock);
     }

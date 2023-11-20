@@ -3,6 +3,7 @@
 #include <stdio.h>     // For FILE
 #include <stdlib.h>    // For malloc
 #include <semaphore.h> // For sem_t
+#include <time.h>      // For clock_t
 
 #define SHM_SIZE 1024
 #define SHM_PERM 0666
@@ -20,6 +21,12 @@ struct shared_memory
 {
     char message[MAX_SEGMENTS][MAX_MESSAGE_SEGMENT_SIZE + 1];   // The message the user wants to send
     int segments_counter;                                       // The number of segments the message has
+    int total_messages_sent;                                    // The total number of messages the user has sent
+    int total_messages_received;                                // The total number of messages the user has received
+    int total_segments;                                         // The total number of segments the user's messages has been split into
+    double total_wait_time;                                     // The total time the user has waited for the other process to read the message
+    clock_t write_end_time;                                     // The time when the user ends writing a message
+    clock_t read_start_time;                                    // The time when the user reads the first segment of a message
     Semaphore message_full_lock;                                // The reader waits for the message to be written
     Semaphore message_empty_lock;                               // The writer waits for the message to be read
     Semaphore mutex;                                            // Ensures mutual exclusion between the two processes
