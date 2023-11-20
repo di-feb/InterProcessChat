@@ -185,27 +185,12 @@ char *copy_n_chars_from_file(char *dest, FILE *file, size_t n)
 }
 
 // Splits the message into segments of 15 characters
-void write_message(SharedMemory shared_memory)
+void write_message(SharedMemory shared_memory, char *message)
 {
-    // The message the user wants to send
-    char message[MAX_MESSAGE_SIZE + 1];
-
-    // Read the message from the user
-    fgets(message, MAX_MESSAGE_SIZE, stdin);
-
-    // Remove the newline character if it's present
-    char *newline_position = strchr(message, '\n');
-    if (newline_position != NULL)
-        *newline_position = '\0';
-
-    
-    
-    char *current_position = message;
-
-    while (*current_position)
+    while (*message)
     {
         char *message_segment = malloc(MAX_MESSAGE_SEGMENT_SIZE + 1);
-        copy_n_chars(message_segment, current_position, MAX_MESSAGE_SEGMENT_SIZE);
+        copy_n_chars(message_segment, message, MAX_MESSAGE_SEGMENT_SIZE);
 
         // If we read all the message
         if (*message_segment == '\0')
@@ -227,7 +212,7 @@ void write_message(SharedMemory shared_memory)
             pthread_exit(NULL);
         }
 
-        current_position += strlen(message_segment);
+        message += strlen(message_segment);
         free(message_segment);
     }
 }
@@ -277,10 +262,9 @@ int read_message(SharedMemory shared_memory)
 
     if (strcmp(full_message, "#BYE#") == 0)
         res = 1;
-    
 
     printf("\033[1;36mFriend: \033[0m%s\n", full_message);
-    fflush(stdout);  // Manually flush the buffer because we don't have a newline character
+    fflush(stdout); // Manually flush the buffer because we don't have a newline character
 
     return res;
 }
@@ -320,22 +304,6 @@ void *receive_message(void *data)
     }
 }
 
-// Read at most `n` characters (newline included) into `str`.
-// If present, the newline is removed (replaced by the null terminator).
-void s_gets(char *str, int n)
-{
-    char *str_read = fgets(str, n, stdin);
-    if (!str_read)
-        return;
-
-    int i = 0;
-    while (str[i] != '\n' && str[i] != '\0')
-        i++;
-
-    if (str[i] == '\n')
-        str[i] = '\0';
-}
-
 // The thread code that is responsible for sending message
 void *send_message(void *data)
 {
@@ -346,8 +314,19 @@ void *send_message(void *data)
         // The writer waits the reader to finish
         sem_wait(&shared_memory->message_empty_lock);
 
+        // The message the user wants to send
+        char message[MAX_MESSAGE_SIZE + 1];
+
+        // Read the message from the user
+        fgets(message, MAX_MESSAGE_SIZE, stdin);
+
+        // Remove the newline character if it's present
+        char *newline_position = strchr(message, '\n');
+        if (newline_position != NULL)
+            *newline_position = '\0';
+
         // Now the writer can write
-        write_message(shared_memory);
+        write_message(shared_memory, message);
 
         // We set the message_full_lock to 1 so the reader can read
         sem_post(&shared_memory->message_full_lock);
