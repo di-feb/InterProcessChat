@@ -1,16 +1,16 @@
-#include <stdio.h>    // For FILE
-#include <stdlib.h>   // For malloc
-#include <string.h>   // For strlen, strcpy, strchr
-#include <fcntl.h>    // For O_CREAT, O_RDWR
-#include <errno.h>  
-#include <dirent.h>   // For opendir, readdir, closedir
-#include <sys/types.h>// For open, close 
-#include <sys/ipc.h>  // For shmget, shmat, shmdt, shmctl
-#include <sys/shm.h>  // For shmget, shmat, shmdt, shmctl
-#include <sys/wait.h> // For wait
-#include <time.h>     // For clock_t
-#include <wait.h>     // For wait
-#include <pthread.h>  // For pthread_create, pthread_join
+#include <stdio.h>  // For FILE
+#include <stdlib.h> // For malloc
+#include <string.h> // For strlen, strcpy, strchr
+#include <fcntl.h>  // For O_CREAT, O_RDWR
+#include <errno.h>
+#include <dirent.h>    // For opendir, readdir, closedir
+#include <sys/types.h> // For open, close
+#include <sys/ipc.h>   // For shmget, shmat, shmdt, shmctl
+#include <sys/shm.h>   // For shmget, shmat, shmdt, shmctl
+#include <sys/wait.h>  // For wait
+#include <time.h>      // For clock_t
+#include <wait.h>      // For wait
+#include <pthread.h>   // For pthread_create, pthread_join
 #include "../include/headers.h"
 
 // Mallocs new memory for a string and
@@ -163,7 +163,7 @@ void retrieve_shm_id(int *shm_id_1, int *shm_id_2)
 
 // Copies n characters from src to dest
 // and puts a null terminator at the end
-char *copy_n_chars(char *dest, const char *src, size_t n)
+int copy_n_chars(char *dest, const char *src, size_t n)
 {
     size_t i;
     for (i = 0; i < n && src[i] != '\0'; i++)
@@ -171,7 +171,7 @@ char *copy_n_chars(char *dest, const char *src, size_t n)
         dest[i] = src[i];
     }
     dest[i] = '\0';
-    return dest;
+    return i;
 }
 
 // Copies n characters from file to dest
@@ -193,25 +193,17 @@ void write_message(SharedMemory shared_memory, char *message)
 {
     while (*message)
     {
-        char *message_segment = malloc(MAX_MESSAGE_SEGMENT_SIZE + 1);
-        copy_n_chars(message_segment, message, MAX_MESSAGE_SEGMENT_SIZE);
+        // The writer waits the reader to finish reading this segment
+        sem_wait(&shared_memory->message_empty_lock);
 
-        // If we read all the message
-        if (*message_segment == '\0')
-        {
-            free(message_segment);
-            break;
-        }
         // Copy the message segment to the shared memory
-        copy_n_chars(shared_memory->message[shared_memory->segments_counter], message_segment, strlen(message_segment));
+        int chars_copied = copy_n_chars(shared_memory->message, message, MAX_MESSAGE_SEGMENT_SIZE);
         shared_memory->segments_counter++;
 
-        // Check if the message is #BYE. 
+        // Check if the message is #BYE.
         // If it is then we need to stop chatting
-        if (strcmp(message_segment, "#BYE#") == 0 && shared_memory->segments_counter == 1)
+        if (strcmp(shared_memory->message, "#BYE#") == 0 && shared_memory->segments_counter == 1)
         {
-            // Free the memory of message_segment
-            free(message_segment);
 
             // Update the total_segments, total_messages_sent
             shared_memory->total_segments += shared_memory->segments_counter;
@@ -222,46 +214,58 @@ void write_message(SharedMemory shared_memory, char *message)
             pthread_exit(NULL);
         }
 
-        message += strlen(message_segment);
-        free(message_segment);
+        message += chars_copied;
+        
+        // Check if message is finished so we can let the reader print it
+        if(*message == '\0')
+            break;
+
+        // We set the message_full_lock to 1 so the reader can read
+        sem_post(&shared_memory->message_full_lock);
+
     }
 
-    // Update the total_segments, total_messages_sent, write_end_time
+    // Update the total_segments, total_messages_sent, write_end_time, message_end
     shared_memory->total_segments += shared_memory->segments_counter;
     shared_memory->total_messages_sent++;
-    shared_memory->write_end_time = clock();
+    shared_memory->message_end = 1;
+    shared_memory->write_end_time = clock(); 
+
+    // We set the message_full_lock to 1 so the reader can read
+    sem_post(&shared_memory->message_full_lock);
+    
 }
 
-// Splits the file into segments of 15 characters
-void segment_file(SharedMemory shared_memory, char *filename)
-{
-    FILE *file = fopen(filename, "r");
-    if (file == NULL)
-    {
-        perror("Error opening file.");
-        return;
-    }
+// // Splits the file into segments of 15 characters
+// void segment_file(SharedMemory shared_memory, char *filename)
+// {
+//     FILE *file = fopen(filename, "r");
+//     if (file == NULL)
+//     {
+//         perror("Error opening file.");
+//         return;
+//     }
 
-    while (!feof(file))
-    {
-        char *message_segment = malloc(MAX_MESSAGE_SEGMENT_SIZE + 1);
-        copy_n_chars_from_file(message_segment, file, MAX_MESSAGE_SEGMENT_SIZE);
-        // If we read all the file
-        if (*message_segment == '\0')
-        {
-            free(message_segment);
-            break;
-        }
+//     while (!feof(file))
+//     {
+//         char *message_segment = malloc(MAX_MESSAGE_SEGMENT_SIZE + 1);
+//         copy_n_chars_from_file(message_segment, file, MAX_MESSAGE_SEGMENT_SIZE);
+//         // If we read all the file
+//         if (*message_segment == '\0')
+//         {
+//             free(message_segment);
+//             break;
+//         }
 
-        // Copy the message segment to the shared memory
-        copy_n_chars(shared_memory->message[shared_memory->segments_counter], message_segment, strlen(message_segment));
-        shared_memory->segments_counter++;
+//         // Copy the message segment to the shared memory
+//         copy_n_chars(shared_memory->message[shared_memory->segments_counter], message_segment, strlen(message_segment));
+//         shared_memory->segments_counter++;
 
-        free(message_segment);
-    }
+//         free(message_segment);
+//     }
 
-    fclose(file);
-}
+//     fclose(file);
+// }
 
 // It handles the message.
 // Check every segment of it and if it is #BYE# then
@@ -272,29 +276,49 @@ int read_message(SharedMemory shared_memory)
     int res = 0;
     char full_message[MAX_MESSAGE_SIZE] = "";
 
-    shared_memory->read_start_time = clock();
-    shared_memory->total_wait_time += (double)(shared_memory->read_start_time - shared_memory->write_end_time) / CLOCKS_PER_SEC;
-    for (int i = 0; i < shared_memory->segments_counter; i++)
-        copy_n_chars(full_message + strlen(full_message),
-                     shared_memory->message[i], strlen(shared_memory->message[i]));
+    // Wait to collect every segment of the message
+    while (1)
+    {
+        // The reader waits the writer to finish
+        sem_wait(&shared_memory->message_full_lock);
 
-    if (strcmp(full_message, "#BYE#") == 0)
-        res = 1;
+        // If the reader reads the first segment of the message
+        if (shared_memory->segments_counter == 1)
+        {
+            // Update the read_start_time
+            shared_memory->read_start_time = clock();
+            shared_memory->total_wait_time += (double)(shared_memory->read_start_time - shared_memory->write_end_time) / CLOCKS_PER_SEC;
+        }
+        // Copy the first segment of the message
+        copy_n_chars(full_message + strlen(full_message), shared_memory->message, strlen(shared_memory->message));
 
+        if (strcmp(full_message, "#BYE#") == 0 && shared_memory->segments_counter == 1)
+            res = 1;
+
+        // Empty the message inside the shared memory
+        shared_memory->message[0] = '\0';
+
+        // If the message has ended then we can stop reading
+        if (shared_memory->message_end)
+            break;
+
+        // Now reader lets the writer to continue his writing
+        sem_post(&shared_memory->message_empty_lock);
+
+    }
+
+    // Print the whole message
     printf("\033[1;36mFriend: \033[0m%s\n", full_message);
     fflush(stdout); // Manually flush the buffer because we don't have a newline character
 
+    // Update the total_messages_received and refresh segments_counter
     shared_memory->total_messages_received++;
-    return res;
-}
+    shared_memory->segments_counter = 0;
 
-void empty_message(SharedMemory shared_memory)
-{
-    while (shared_memory->segments_counter > 0)
-    {
-        shared_memory->message[shared_memory->segments_counter - 1][0] = '\0';
-        shared_memory->segments_counter--;
-    }
+    // Now reader lets the writer to continue his writing
+    sem_post(&shared_memory->message_empty_lock);
+
+    return res;
 }
 
 // The thread code that is responsible for receiving message
@@ -303,23 +327,12 @@ void *receive_message(void *data)
     SharedMemory shared_memory = (SharedMemory)data;
     while (1)
     {
-        // The reader waits the writer to finish
-        sem_wait(&shared_memory->message_full_lock);
         int res = read_message(shared_memory);
 
         // if the res is equal to 1 then the message was #BYE#
         // so we need to stop the chatting and exit the thread
         if (res)
-        {
-            // We set the message_empty_lock to 0 so the writer can write
-            sem_post(&shared_memory->message_empty_lock);
             pthread_exit(NULL);
-        }
-
-        empty_message(shared_memory);
-
-        // We set the message_empty_lock to 0 so the writer can write
-        sem_post(&shared_memory->message_empty_lock);
     }
 }
 
@@ -327,12 +340,9 @@ void *receive_message(void *data)
 void *send_message(void *data)
 {
     SharedMemory shared_memory = (SharedMemory)data;
-    
+
     while (1)
     {
-        // The writer waits the reader to finish
-        sem_wait(&shared_memory->message_empty_lock);
-
         // The message the user wants to send
         char message[MAX_MESSAGE_SIZE + 1];
 
@@ -347,8 +357,5 @@ void *send_message(void *data)
         // Now the writer can write
         write_message(shared_memory, message);
 
-        
-        // We set the message_full_lock to 1 so the reader can read
-        sem_post(&shared_memory->message_full_lock);
     }
 }

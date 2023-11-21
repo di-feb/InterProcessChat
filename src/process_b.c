@@ -50,6 +50,8 @@ int main(int argc, char** argv)
         exit(1);
     }
 
+    printf("\n\n\033[1;32m-----> END OF CHAT APPLICATION <-----\033[0m\n\n");
+
     printf("\n\n\033[1;33m-----> PROCESS_B STATISTICS <-----\033[0m\n\n");
 
     printf("Total messages sent: %d\n", shared_memory_b->total_messages_sent);

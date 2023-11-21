@@ -19,7 +19,8 @@ typedef sem_t Semaphore;
 
 struct shared_memory
 {
-    char message[MAX_SEGMENTS][MAX_MESSAGE_SEGMENT_SIZE + 1];   // The message the user wants to send
+    char message[MAX_MESSAGE_SEGMENT_SIZE + 1];                 // The message the user wants to send
+    int message_end;                                            // If its value is 1 then the message has ended
     int segments_counter;                                       // The number of segments the message has
     int total_messages_sent;                                    // The total number of messages the user has sent
     int total_messages_received;                                // The total number of messages the user has received
@@ -56,7 +57,8 @@ void retrieve_shm_id(int *shm_id_1, int *shm_id_2);
 
 // Copies n characters from src to dest
 // and puts a null terminator at the end
-char *copy_n_chars(char *dest, const char *src, size_t n);
+// Returns how many characters were copied
+int copy_n_chars(char *dest, const char *src, size_t n);
 
 // Copies n characters from file to dest
 // and puts a null terminator at the end
