@@ -201,10 +201,8 @@ void write_message(SharedMemory shared_memory, char *message)
     if (*message == '\0')
         return;
 
-    int i = 0;
     while (*message)
     {
-        printf("Segments write:%d\n", i++);
         // The writer waits the reader to finish reading this segment
         sem_wait(&shared_memory->message_empty_lock);
 
@@ -229,7 +227,6 @@ void write_message(SharedMemory shared_memory, char *message)
         }
 
         message += chars_copied;
-        printf("Writer: chars_copied:%d\n", chars_copied);
  
         // Check if message is finished so we can let the reader print it
         if (*message == '\0')
@@ -257,7 +254,6 @@ int read_message(SharedMemory shared_memory)
 {
     int res = 0;
     char full_message[MAX_MESSAGE_SIZE] = "";
-    int i = 0;
     // Wait to collect every segment of the message
     while (1)
     {
@@ -325,7 +321,6 @@ void *receive_message(void *data)
 void *send_message(void *data)
 {
     SharedMemory shared_memory = (SharedMemory)data;
-    int i = 0;
     while (1)
     {
         // The message the user wants to send
