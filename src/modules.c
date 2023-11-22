@@ -206,6 +206,11 @@ void write_message(SharedMemory shared_memory, char *message)
         // The writer waits the reader to finish reading this segment
         sem_wait(&shared_memory->message_empty_lock);
 
+        if(shared_memory->segments_counter == 0)
+            // We keep the time just before the writer sends the first segment
+            // and we keep it again when the reader reads the first segment
+            shared_memory->write_end_time = clock();
+
         // Copy the message segment to the shared memory
         int chars_copied = copy_n_chars(shared_memory->message, message, MAX_MESSAGE_SEGMENT_SIZE);
         shared_memory->segments_counter++;
@@ -240,8 +245,7 @@ void write_message(SharedMemory shared_memory, char *message)
     shared_memory->total_segments += shared_memory->segments_counter;
     shared_memory->total_messages_sent++;
     shared_memory->message_end = 1;
-    shared_memory->write_end_time = clock();
-
+    
     // We set the message_full_lock to 1 so the reader can read
     sem_post(&shared_memory->message_full_lock);
 }
