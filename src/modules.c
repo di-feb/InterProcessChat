@@ -201,8 +201,10 @@ void write_message(SharedMemory shared_memory, char *message)
     if (*message == '\0')
         return;
 
+    int i = 0;
     while (*message)
     {
+        printf("Segments write:%d\n", i++);
         // The writer waits the reader to finish reading this segment
         sem_wait(&shared_memory->message_empty_lock);
 
@@ -227,7 +229,8 @@ void write_message(SharedMemory shared_memory, char *message)
         }
 
         message += chars_copied;
-
+        printf("Writer: chars_copied:%d\n", chars_copied);
+ 
         // Check if message is finished so we can let the reader print it
         if (*message == '\0')
             break;
@@ -254,7 +257,7 @@ int read_message(SharedMemory shared_memory)
 {
     int res = 0;
     char full_message[MAX_MESSAGE_SIZE] = "";
-
+    int i = 0;
     // Wait to collect every segment of the message
     while (1)
     {
@@ -271,9 +274,12 @@ int read_message(SharedMemory shared_memory)
         // Copy the segment of the message
         copy_n_chars(full_message + strlen(full_message), shared_memory->message, strlen(shared_memory->message));
 
-        if (strcmp(full_message, "#BYE#") == 0 && shared_memory->segments_counter == 1){
+        // Check if the message is #BYE.
+        // If it is then we need to stop chatting
+        // We make res = 1 so the thread can exit when we return
+        if (strcmp(full_message, "#BYE#") == 0 && shared_memory->segments_counter == 1)
             res = 1;
-        }
+
         // Empty the message inside the shared memory
         shared_memory->message[0] = '\0';
 
@@ -289,9 +295,10 @@ int read_message(SharedMemory shared_memory)
     printf("\033[1;36mFriend: \033[0m%s\n", full_message);
     fflush(stdout); // Manually flush the buffer because we don't have a newline character
 
-    // Update the total_messages_received and refresh segments_counter
+    // Update the total_messages_received and refresh segments_counter, message_end
     shared_memory->total_messages_received++;
     shared_memory->segments_counter = 0;
+    shared_memory->message_end = 0;
 
     // Now reader lets the writer to continue his writing
     sem_post(&shared_memory->message_empty_lock);
@@ -318,7 +325,7 @@ void *receive_message(void *data)
 void *send_message(void *data)
 {
     SharedMemory shared_memory = (SharedMemory)data;
-
+    int i = 0;
     while (1)
     {
         // The message the user wants to send
