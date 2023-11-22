@@ -76,6 +76,7 @@ int initialize_structures(SharedMemory *shared_memory, key_t key)
     printf("The semaphore named:mutex has been initialized.\n");
 
     // Initialize variables
+    (*shared_memory)->message_end = 0;
     (*shared_memory)->segments_counter = 0;
     (*shared_memory)->total_messages_sent = 0;
     (*shared_memory)->total_messages_received = 0;
@@ -191,6 +192,15 @@ char *copy_n_chars_from_file(char *dest, FILE *file, size_t n)
 // Splits the message into segments of 15 characters
 void write_message(SharedMemory shared_memory, char *message)
 {
+    if (strlen(message) > MAX_MESSAGE_SIZE)
+    {
+        printf("The message is too long. Please try again.\n");
+        return;
+    }
+
+    if (*message == '\0')
+        return;
+
     while (*message)
     {
         // The writer waits the reader to finish reading this segment
@@ -205,9 +215,11 @@ void write_message(SharedMemory shared_memory, char *message)
         if (strcmp(shared_memory->message, "#BYE#") == 0 && shared_memory->segments_counter == 1)
         {
 
-            // Update the total_segments, total_messages_sent
+            // Update the total_segments, total_messages_sent, write_end_time, message_end
             shared_memory->total_segments += shared_memory->segments_counter;
             shared_memory->total_messages_sent++;
+            shared_memory->message_end = 1;
+            shared_memory->write_end_time = clock();
 
             // We set the message_full_lock to 1 so the reader can read
             sem_post(&shared_memory->message_full_lock);
@@ -215,57 +227,24 @@ void write_message(SharedMemory shared_memory, char *message)
         }
 
         message += chars_copied;
-        
+
         // Check if message is finished so we can let the reader print it
-        if(*message == '\0')
+        if (*message == '\0')
             break;
 
         // We set the message_full_lock to 1 so the reader can read
         sem_post(&shared_memory->message_full_lock);
-
     }
 
     // Update the total_segments, total_messages_sent, write_end_time, message_end
     shared_memory->total_segments += shared_memory->segments_counter;
     shared_memory->total_messages_sent++;
     shared_memory->message_end = 1;
-    shared_memory->write_end_time = clock(); 
+    shared_memory->write_end_time = clock();
 
     // We set the message_full_lock to 1 so the reader can read
     sem_post(&shared_memory->message_full_lock);
-    
 }
-
-// // Splits the file into segments of 15 characters
-// void segment_file(SharedMemory shared_memory, char *filename)
-// {
-//     FILE *file = fopen(filename, "r");
-//     if (file == NULL)
-//     {
-//         perror("Error opening file.");
-//         return;
-//     }
-
-//     while (!feof(file))
-//     {
-//         char *message_segment = malloc(MAX_MESSAGE_SEGMENT_SIZE + 1);
-//         copy_n_chars_from_file(message_segment, file, MAX_MESSAGE_SEGMENT_SIZE);
-//         // If we read all the file
-//         if (*message_segment == '\0')
-//         {
-//             free(message_segment);
-//             break;
-//         }
-
-//         // Copy the message segment to the shared memory
-//         copy_n_chars(shared_memory->message[shared_memory->segments_counter], message_segment, strlen(message_segment));
-//         shared_memory->segments_counter++;
-
-//         free(message_segment);
-//     }
-
-//     fclose(file);
-// }
 
 // It handles the message.
 // Check every segment of it and if it is #BYE# then
@@ -289,12 +268,12 @@ int read_message(SharedMemory shared_memory)
             shared_memory->read_start_time = clock();
             shared_memory->total_wait_time += (double)(shared_memory->read_start_time - shared_memory->write_end_time) / CLOCKS_PER_SEC;
         }
-        // Copy the first segment of the message
+        // Copy the segment of the message
         copy_n_chars(full_message + strlen(full_message), shared_memory->message, strlen(shared_memory->message));
 
-        if (strcmp(full_message, "#BYE#") == 0 && shared_memory->segments_counter == 1)
+        if (strcmp(full_message, "#BYE#") == 0 && shared_memory->segments_counter == 1){
             res = 1;
-
+        }
         // Empty the message inside the shared memory
         shared_memory->message[0] = '\0';
 
@@ -304,7 +283,6 @@ int read_message(SharedMemory shared_memory)
 
         // Now reader lets the writer to continue his writing
         sem_post(&shared_memory->message_empty_lock);
-
     }
 
     // Print the whole message
@@ -356,6 +334,5 @@ void *send_message(void *data)
 
         // Now the writer can write
         write_message(shared_memory, message);
-
     }
 }
