@@ -1,4 +1,4 @@
-# ClientServer_OS3
+# InterProcessChat
 
 This project is a __messaging application__ that facilitates communication between two interactive processes, Process A and Process B, using shared memory and POSIX semaphores for synchronization.
 
