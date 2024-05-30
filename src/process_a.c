@@ -55,7 +55,3 @@ int main(int argc, char** argv)
     
     return 0;
 }
-// vector
-// oxi fork()
-// den exw katalabei gia user na stelnei
-// υπαρχει μαξ χαρακτηρες στα μνματα που θα στελνονται;
